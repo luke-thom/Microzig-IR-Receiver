@@ -1,0 +1,13 @@
+.{
+    .name = .ir,
+    .version = "0.0.1",
+    .dependencies = .{
+        .microzig = .{
+            .url = "git+https://github.com/ZigEmbeddedGroup/microzig.git#81681faafe4123e140d3fb862b4fc1a604a57367",
+            .hash = "microzig-0.15.0-D20YSY3dzAAsgk7P5z7RLkAyOJSQboGGUw5KxrX61P1M",
+        },
+    },
+    .minimum_zig_version = "0.15.1",
+    .paths = .{""},
+    .fingerprint = 0x4bedd2019ca81505,
+}
