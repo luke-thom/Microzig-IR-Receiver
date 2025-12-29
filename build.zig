@@ -16,6 +16,14 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
     });
 
+    const fw_usb = mb.add_firmware(.{
+        .name = "usb",
+        .target = mb.ports.rp2xxx.boards.raspberrypi.pico,
+        .optimize = .ReleaseSmall,
+        .root_source_file = b.path("src/usb-main.zig"),
+    });
+    mb.install_firmware(fw_usb, .{});
+
     // We call this twice to demonstrate that the default binary output for
     // RP2040 is UF2, but we can also output other formats easily
     const firmware_install = mb.add_install_firmware(firmware, .{ });
