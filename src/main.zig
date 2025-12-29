@@ -1,7 +1,9 @@
 const std = @import("std");
 const microzig = @import("microzig");
-const usb_hid = @import("usb_hid.zig");
+
 const gpio_irq = @import("gpio_irq.zig");
+const usb_hid = @import("usb_hid.zig");
+const codes = @import("codes.zig");
 const ir = @import("ir.zig");
 
 const hal = microzig.hal;
@@ -43,8 +45,9 @@ fn getIrqTrigger() ?gpio_irq.IrqTrigger {
 fn irqTimer() callconv(.c) void {
     timer.INTR.modify(.{.ALARM_0 = 1});
     if (ir.onTimer()) |command| {
-        _ = command;
-        reporter.press_key(205, .from_ms(100));
+        if (codes.toKeyCode(command)) |keycode| {
+            reporter.press_key(@intFromEnum(keycode), .from_ms(100));
+        }
     } else |_| {}
 }
 fn setAlarm(target: microzig.drivers.time.Absolute) void {

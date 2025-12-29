@@ -8,7 +8,7 @@ const time = hal.time;
 const Absolote = microzig.drivers.time.Absolute;
 const Duration = microzig.drivers.time.Duration;
 
-const IrCommand = struct {address: u16, command: u8};
+pub const IrCommand = struct {address: u16, command: u8};
 
 // Timeings for parsing the transmission in nano seconds
 const transmission_time = 80000;
