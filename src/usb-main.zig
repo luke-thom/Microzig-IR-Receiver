@@ -79,10 +79,10 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
         .device_subclass = 0,
         .device_protocol = 0,
         .max_packet_size0 = 64,
-        .vendor = 0xCafe,
-        .product = 2,
+        .vendor = 0xFAFA,
+        .product = 0x00F0,
         .bcd_device = 0x0100,
-        // Those are indices to the descriptor strings
+        // Those are indices to the descriptor strings (starting from 1)
         // Make sure to provide enough string descriptors!
         .manufacturer_s = 1,
         .product_s = 2,
@@ -92,9 +92,10 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
     .config_descriptor = &usb_config_descriptor,
     .lang_descriptor = "\x04\x03\x09\x04", // length || string descriptor (0x03) || Engl (0x0409)
     .descriptor_strings = &.{
-        &usb.utils.utf8_to_utf16_le("Raspberry Pi"),
-        &usb.utils.utf8_to_utf16_le("Pico Test Device"),
-        &usb.utils.utf8_to_utf16_le("cafebabe"),
+        &usb.utils.utf8_to_utf16_le("Stephan Moeller"),
+        &usb.utils.utf8_to_utf16_le("ZigMkay2"),
+        &usb.utils.utf8_to_utf16_le("00000001"),
+        &usb.utils.utf8_to_utf16_le("Keyboard"),
     },
     .drivers = &drivers,
 };
@@ -106,17 +107,24 @@ pub fn main() void {
 
     usb_dev.init_clk();
     usb_dev.init_device(&DEVICE_CONFIGURATION) catch unreachable;
-    //usb_dev.callbacks.endpoint_open(endpoint, 512, usb.types.TransferType.Interrupt);
+    usb_dev.callbacks.endpoint_open(endpoint, 512, usb.types.TransferType.Interrupt);
 
-    var last: u64 = 0;
+    var last_blink_time: u64 = 0;
+    var last_report_time: u64 = 0;
+    var last_report_press: bool = false;
     while (true) {
         usb_dev.task(false) catch unreachable;
-        //usb_dev.callbacks.usb_start_tx(endpoint, &.{0, 0, 0, 0, 0, 0, 0});
         hal.time.sleep_ms(10);
         const now = hal.time.get_time_since_boot().to_us();
-        if (now - last > 1000000) {
+        if (now - last_blink_time > 1000000) {
             led.toggle();
-            last = now;
+            last_blink_time = now;
+            last_report_press = !last_report_press;
+        }
+        if (now - last_report_time > 10000) {
+            const report: [7]u8 = if (last_report_press) .{1, 6, 0, 0, 0, 0 ,0} else [1]u8{0}**7;
+            usb_dev.callbacks.usb_start_tx(endpoint, &report);
+            last_report_time = now;
         }
     }
 }
