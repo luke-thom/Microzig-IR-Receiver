@@ -27,4 +27,12 @@ pub fn build(b: *std.Build) void {
     flash_step.dependOn(&copy_run.step);
     copy_run.step.dependOn(&mount_run.step);
     mount_run.step.dependOn(&firmware_install.step);
+
+    const firmware_get_codes = mb.add_firmware(.{
+        .name = "get_codes",
+        .target = mb.ports.rp2xxx.boards.raspberrypi.pico,
+        .optimize = .ReleaseSmall,
+        .root_source_file = b.path("src/get_codes_main.zig"),
+    });
+    mb.install_firmware(firmware_get_codes, .{});
 }
