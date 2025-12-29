@@ -1,6 +1,6 @@
 const std = @import("std");
 const microzig = @import("microzig");
-// const usb_logger = @import("usb_logging.zig");
+const usb_hid = @import("usb_hid.zig");
 const gpio_irq = @import("gpio_irq.zig");
 const ir = @import("ir.zig");
 
@@ -9,6 +9,7 @@ const time = hal.time;
 const gpio = hal.gpio;
 
 const timer = microzig.chip.peripherals.TIMER;
+const usb_dev = hal.usb.Usb(.{});
 
 pub fn dummyLog(
     comptime level: std.log.Level,
@@ -28,6 +29,7 @@ pub const microzig_options = microzig.Options{
     },
 };
 
+var reporter: usb_hid.Reporter = .{};
 
 fn irqGPIO() linksection(".ram_text") callconv(.c) void {
     _ = getIrqTrigger(); // Clear event 
@@ -40,7 +42,10 @@ fn getIrqTrigger() ?gpio_irq.IrqTrigger {
 
 fn irqTimer() callconv(.c) void {
     timer.INTR.modify(.{.ALARM_0 = 1});
-    _ = ir.onTimer() catch null;
+    if (ir.onTimer()) |command| {
+        _ = command;
+        reporter.press_key(205, .from_ms(100));
+    } else |_| {}
 }
 fn setAlarm(target: microzig.drivers.time.Absolute) void {
     timer.ALARM0.write_raw(@intCast(target.to_us() & std.math.maxInt(u32)));
@@ -71,14 +76,25 @@ pub fn main() !void {
     timer.INTE.toggle(.{.ALARM_0 = 1});
 
     // Setup USB
+    usb_dev.init_clk();
+    usb_dev.init_device(&usb_hid.DEVICE_CONFIGURATION) catch unreachable;
+    usb_dev.callbacks.endpoint_open(usb_hid.endpoint, 512, hal.usb.types.TransferType.Interrupt);
 
     // Initialize the loop
-    var next_time = time.get_time_since_boot().add_duration(.from_ms(500));
+    var next_blink_time = time.get_time_since_boot().add_duration(.from_ms(500));
+    var next_report_time = time.get_time_since_boot().add_duration(.from_ms(500));
     while (true) {
-        // Todo task usb
-        if (next_time.is_reached_by(time.get_time_since_boot())) {
-            next_time = time.get_time_since_boot().add_duration(.from_ms(500));
+        const now = time.get_time_since_boot();
+        usb_dev.task(false) catch unreachable;
+
+        if (next_blink_time.is_reached_by(now)) {
+            next_blink_time = now.add_duration(.from_ms(500));
             led.toggle();
+            reporter.send_report(usb_dev, now);
+        }
+        if (next_report_time.is_reached_by(now)) {
+            next_report_time = now.add_duration(.from_ms(10));
+            reporter.send_report(usb_dev, now);
         }
     }
 }
