@@ -21,20 +21,20 @@ pub const HID_KeymodifierCodes = enum(u8) {
 const KeyboardReportDescriptor = hid.hid_usage_page(1, hid.UsageTable.desktop) ++
     hid.hid_usage(1, hid.DesktopUsage.keyboard) ++
     hid.hid_collection(hid.CollectionItem.Application) ++
-    hid.hid_usage_page(1, hid.UsageTable.keyboard) ++
-    hid.hid_usage_min(1, .{@intFromEnum(HID_KeymodifierCodes.left_control)}) ++
-    hid.hid_usage_max(1, .{@intFromEnum(HID_KeymodifierCodes.right_gui)}) ++
+    hid.hid_usage_page(1, "\x0c".*) ++ // Consumer Page
+    hid.hid_usage_min(1, .{205}) ++
+    hid.hid_usage_max(1, .{205}) ++
     hid.hid_logical_min(1, "\x00".*) ++
     hid.hid_logical_max(1, "\x01".*) ++
     hid.hid_report_size(1, "\x01".*) ++
     hid.hid_report_count(1, "\x08".*) ++
-    hid.hid_input(hid.HID_DATA | hid.HID_VARIABLE | hid.HID_ABSOLUTE) ++
-    hid.hid_report_count(1, "\x06".*) ++
-    hid.hid_report_size(1, "\x08".*) ++
+    hid.hid_input(hid.HID_DATA | hid.HID_ABSOLUTE) ++
+    hid.hid_report_count(1, "\x01".*) ++
+    hid.hid_report_size(1, "\x02".*) ++
     hid.hid_logical_max(1, "\x65".*) ++
     hid.hid_usage_min(1, "\x00".*) ++
     hid.hid_usage_max(1, "\x65".*) ++
-    hid.hid_input(hid.HID_DATA | hid.HID_ARRAY | hid.HID_ABSOLUTE) ++
+    hid.hid_input(hid.HID_DATA | hid.HID_ABSOLUTE) ++
     hid.hid_collection_end();
 
 const endpoint = usb.Endpoint.to_address(1, .In);
@@ -100,6 +100,21 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
     .drivers = &drivers,
 };
 
+var keycode: u8 = 0;
+var keycode_expirery: microzig.drivers.time.Absolute = .from_us(0);
+fn send_report() void {
+    const now = hal.time.get_time_since_boot();
+    const key = if (keycode_expirery.is_reached_by(now)) 0 else keycode;
+    const report: [2]u8 = .{key, 0};
+    usb_dev.callbacks.usb_start_tx(endpoint, &report);
+}
+
+fn set_key(key: u8) void {
+    keycode = key;
+    const now = hal.time.get_time_since_boot();
+    keycode_expirery = now.add_duration(.from_ms(100));
+}
+
 pub fn main() void {
     const led = hal.gpio.num(25);
     led.set_direction(.out);
@@ -111,20 +126,18 @@ pub fn main() void {
 
     var last_blink_time: u64 = 0;
     var last_report_time: u64 = 0;
-    var last_report_press: bool = false;
     while (true) {
         usb_dev.task(false) catch unreachable;
         hal.time.sleep_ms(10);
         const now = hal.time.get_time_since_boot().to_us();
-        if (now - last_blink_time > 1000000) {
-            led.toggle();
+        if (now - last_blink_time > 5000000) {
             last_blink_time = now;
-            last_report_press = !last_report_press;
+            led.toggle();
+            set_key(205);
         }
         if (now - last_report_time > 10000) {
-            const report: [7]u8 = if (last_report_press) .{1, 6, 0, 0, 0, 0 ,0} else [1]u8{0}**7;
-            usb_dev.callbacks.usb_start_tx(endpoint, &report);
             last_report_time = now;
+            send_report();
         }
     }
 }
