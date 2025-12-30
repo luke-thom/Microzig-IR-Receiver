@@ -32,7 +32,7 @@ fn getIrqTrigger() ?gpio_irq.IrqTrigger {
 
 fn irqTimer() callconv(.c) void {
     timer.INTR.modify(.{.ALARM_0 = 1});
-    if (ir.onTimer()) |command| {
+    if (ir.onTimerProcessCommand()) |command| {
         std.log.info("{}", .{command});
     } else |_| {}
 }

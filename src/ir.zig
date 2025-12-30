@@ -9,6 +9,7 @@ const Absolote = microzig.drivers.time.Absolute;
 const Duration = microzig.drivers.time.Duration;
 
 pub const IrCommand = struct {address: u16, command: u8};
+pub const CommandErrors = error{BadData, BigPacket, Repeat};
 
 // Timeings for parsing the transmission in nano seconds
 const transmission_time = 80000;
@@ -24,12 +25,11 @@ var tick_index: usize = 0;
 
 const FnSetAlarm = *const fn (target: Absolote) void;
 
-// alarm must be a pointer to the alarm from the timer struct
 pub fn onPin(setAlarm: FnSetAlarm) void {
     logTick(setAlarm);
 }
 
-pub fn onTimer() !IrCommand {
+pub fn onTimerProcessCommand() CommandErrors! IrCommand {
     return decode();
 }
 
@@ -51,19 +51,18 @@ fn logTick(setAlarm: FnSetAlarm) void {
     tick_index += 1;
 }
 
-fn decode() !IrCommand {
+fn decode() CommandErrors! IrCommand {
     const first_pulse = ticks[1].diff(ticks[0]);
     const first_empty = ticks[2].diff(ticks[1]);
 
-    // std.log.debug("{} {}", .{first_pulse, first_empty});
     if (isAround(first_empty, first_empty_repeat_time)) {
         return error.Repeat;
     }
     if (!isAround(first_pulse, first_pulse_time)) {
-        return error.BadHeader;
+        return error.BadData;
     }
     if (!isAround(first_empty, first_empty_command_time)) {
-        return error.BadHeader;
+        return error.BadData;
     }
 
     var address: u16 = 0;
@@ -90,7 +89,6 @@ fn decode() !IrCommand {
         }
     }
     if (command != ~command_inverse) {
-        std.log.debug("Bad command", .{});
         return error.BadData;
     }
     if (address != ~address_high) address |= address_high << 8;

@@ -11,43 +11,47 @@ const Duration = microzig.drivers.time.Duration;
 pub const Reporter = struct {
     keycode: u16 = 0,
     keycode_expirery: Absolute = .from_us(0),
+    state: enum {begin_press, pressed, unpressed} = .begin_press,
 
     pub fn press_key(self: *@This(), keycode: u16, time: Duration) void {
         const now = hal.time.get_time_since_boot();
         self.keycode_expirery = now.add_duration(time);
         self.keycode = keycode;
+        self.state = .begin_press;
     }
 
-    pub fn send_report(self: @This(), usb_dev: type, now: Absolute) void {
-        const keycode = switch (self.keycode_expirery.is_reached_by(now)) {
-            false => std.mem.nativeToLittle(u16, self.keycode),
-            true => 0,
-        };
-        const report = std.mem.asBytes(&keycode);
-        usb_dev.callbacks.usb_start_tx(endpoint, report);
+    pub fn send_report(self: *@This(), usb_dev: type, now: Absolute) void {
+        var report: [3]u8 = .{0x03, 0, 0}; // Report ID 3
+        switch (self.state) {
+            .begin_press => {
+                self.state = .pressed;
+                const keycodeLe = std.mem.nativeToLittle(u16, self.keycode);
+                @memcpy(report[1..], std.mem.asBytes(&keycodeLe));
+                usb_dev.callbacks.usb_start_tx(endpoint, &report);
+            },
+            .pressed => if (self.keycode_expirery.is_reached_by(now)) {
+                self.state = .unpressed;
+                usb_dev.callbacks.usb_start_tx(endpoint, &report);
+            },
+            .unpressed => {},
+        }
     }
 };
 
 pub const endpoint = usb.Endpoint.to_address(1, .In);
-const usb_packet_size = 2;
+const usb_packet_size = 64;
 
-const KeyboardReportDescriptor = hid.hid_usage_page(1, hid.UsageTable.desktop) ++
-    hid.hid_usage(1, hid.DesktopUsage.keyboard) ++
-    hid.hid_collection(hid.CollectionItem.Application) ++
-    hid.hid_usage_page(1, "\x0c".*) ++ // Consumer Page
-    hid.hid_usage_min(1, .{205}) ++
-    hid.hid_usage_max(1, .{205}) ++
-    hid.hid_logical_min(1, "\x00".*) ++
-    hid.hid_logical_max(1, "\x01".*) ++
-    hid.hid_report_size(1, "\x01".*) ++
-    hid.hid_report_count(1, "\x08".*) ++
-    hid.hid_input(hid.HID_DATA | hid.HID_ABSOLUTE) ++
-    hid.hid_report_count(1, "\x01".*) ++
-    hid.hid_report_size(1, "\x02".*) ++
-    hid.hid_logical_max(1, "\x65".*) ++
-    hid.hid_usage_min(1, "\x00".*) ++
-    hid.hid_usage_max(1, "\x65".*) ++
-    hid.hid_input(hid.HID_DATA | hid.HID_ABSOLUTE) ++
+const ReportDescriptor = hid.hid_usage_page(1, .{0x0c}) ++
+    hid.hid_usage(1, .{0x01}) ++
+    hid.hid_collection(.Application) ++
+    [2]u8{0x85, 0x03} ++ // Report ID 3
+    hid.hid_usage_min(1, .{0x00}) ++
+    hid.hid_usage_max(2, .{0x3c, 0x03}) ++
+    hid.hid_logical_min(1, .{0}) ++
+    hid.hid_logical_max(2, .{0x3c, 0x03}) ++
+    hid.hid_report_count(1, .{0x01}) ++
+    hid.hid_report_size(1, .{0x10}) ++
+    hid.hid_input(hid.HID_DATA | hid.HID_ARRAY | hid.HID_ABSOLUTE) ++
     hid.hid_collection_end();
 
 
@@ -66,7 +70,7 @@ const usb_config_descriptor = usb.templates.config_descriptor(1, 1, 0, usb_confi
         .bcd_hid = 0x0111,
         .country_code = 0,
         .num_descriptors = 1,
-        .report_length = KeyboardReportDescriptor.len,
+        .report_length = ReportDescriptor.len,
     }).serialize() ++
     (usb.types.EndpointDescriptor{
         .endpoint_address = endpoint,
@@ -77,7 +81,7 @@ const usb_config_descriptor = usb.templates.config_descriptor(1, 1, 0, usb_confi
 
 var driver = usb.hid.HidClassDriver{
     .ep_in = endpoint,
-    .report_descriptor = &KeyboardReportDescriptor,
+    .report_descriptor = &ReportDescriptor,
 };
 
 var drivers = [_]usb.types.UsbClassDriver{driver.driver()};
@@ -103,10 +107,10 @@ pub var DEVICE_CONFIGURATION: usb.DeviceConfiguration = .{
     .config_descriptor = &usb_config_descriptor,
     .lang_descriptor = "\x04\x03\x09\x04", // length || string descriptor (0x03) || Engl (0x0409)
     .descriptor_strings = &.{
-        &usb.utils.utf8_to_utf16_le("Stephan Moeller"),
-        &usb.utils.utf8_to_utf16_le("ZigMkay2"),
+        &usb.utils.utf8_to_utf16_le("The Calculator"),
+        &usb.utils.utf8_to_utf16_le("Pico IR"),
         &usb.utils.utf8_to_utf16_le("00000001"),
-        &usb.utils.utf8_to_utf16_le("Keyboard"),
+        &usb.utils.utf8_to_utf16_le("IR Reciver"),
     },
     .drivers = &drivers,
 };
